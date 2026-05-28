@@ -7,34 +7,31 @@ dotenv.config();
 const LOGIN_URL = 'http://192.168.100.1/login';
 const TIMEOUT_MS = 10000;
 
-async function login() {
+function makeError(code, message) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
+async function attemptLogin() {
   const username = process.env.WIFI_USERNAME;
   const password = process.env.WIFI_PASSWORD;
-
-  if (!username) {
-    console.error('Error: WIFI_USERNAME missing in .env');
-    process.exit(1);
-  }
-  if (!password) {
-    console.error('Error: WIFI_PASSWORD missing in .env');
-    process.exit(1);
-  }
+  if (!username) throw makeError('CONFIG', 'WIFI_USERNAME missing in .env');
+  if (!password) throw makeError('CONFIG', 'WIFI_PASSWORD missing in .env');
 
   let html;
   try {
     const resp = await axios.get(LOGIN_URL, { timeout: TIMEOUT_MS });
     html = resp.data;
   } catch (err) {
-    console.error(`Cannot reach router at ${LOGIN_URL}: ${err.message}`);
-    process.exit(1);
+    throw makeError('NETWORK', `Cannot reach router at ${LOGIN_URL}: ${err.message}`);
   }
 
   let prefix, suffix;
   try {
     ({ prefix, suffix } = parseSalt(html));
   } catch (err) {
-    console.error(`Could not parse login form: ${err.message}`);
-    process.exit(1);
+    throw makeError('PARSE', `Could not parse login form: ${err.message}`);
   }
   const hashedPassword = computePasswordHash(prefix, password, suffix);
 
@@ -54,26 +51,21 @@ async function login() {
       validateStatus: () => true,
     });
   } catch (err) {
-    console.error(`Login request failed: ${err.message}`);
-    process.exit(1);
+    throw makeError('NETWORK', `Login request failed: ${err.message}`);
   }
 
   if (postResp.status === 302) {
     const location = postResp.headers['location'] || '';
-    if (!location.includes('192.168.100.1')) {
-      console.log('Login successful!');
-    } else {
-      console.error('Login failed: check credentials in .env');
-      process.exit(1);
+    if (location.includes('192.168.100.1')) {
+      throw makeError('AUTH', 'Login failed: redirected back to router');
     }
-  } else {
-    const data = typeof postResp.data === 'string' ? postResp.data : '';
-    if (data.includes('name="login"')) {
-      console.error('Login failed: check credentials in .env');
-      process.exit(1);
-    }
-    console.log('Login successful!');
+    return;
+  }
+
+  const data = typeof postResp.data === 'string' ? postResp.data : '';
+  if (data.includes('name="login"')) {
+    throw makeError('AUTH', 'Login failed: login form still present in response');
   }
 }
 
-login();
+module.exports = { attemptLogin };
