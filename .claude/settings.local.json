@@ -8,7 +8,10 @@
       "Bash(.gitignore\" || echo \"Checking directory...\")",
       "Bash(npx jest *)",
       "Bash(node -e ' *)",
-      "Bash(node)"
+      "Bash(node)",
+      "Bash(git -C /d/dev/ScriptLoginWifi add src/logger.js src/logger.test.js)",
+      "Bash(git -C /d/dev/ScriptLoginWifi commit -m ' *)",
+      "Bash(git *)"
     ]
   }
 }
