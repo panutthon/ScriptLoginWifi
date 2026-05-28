@@ -1,0 +1,16 @@
+{
+  "name": "wifi-autologin",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node src/login.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "md5": "^2.3.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
