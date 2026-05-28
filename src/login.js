@@ -29,7 +29,13 @@ async function login() {
     process.exit(1);
   }
 
-  const { prefix, suffix } = parseSalt(html);
+  let prefix, suffix;
+  try {
+    ({ prefix, suffix } = parseSalt(html));
+  } catch (err) {
+    console.error(`Could not parse login form: ${err.message}`);
+    process.exit(1);
+  }
   const hashedPassword = computePasswordHash(prefix, password, suffix);
 
   const body = new URLSearchParams({
