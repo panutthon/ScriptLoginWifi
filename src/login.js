@@ -1,6 +1,7 @@
 const axios = require('axios');
 const dotenv = require('dotenv');
 const { parseSalt, computePasswordHash } = require('./utils');
+const logger = require('./logger');
 
 dotenv.config();
 
@@ -68,4 +69,32 @@ async function attemptLogin() {
   }
 }
 
-module.exports = { attemptLogin };
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 30_000;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runWithRetry() {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await module.exports.attemptLogin();
+      logger.info(`Login successful (attempt ${attempt}/${MAX_ATTEMPTS})`);
+      return 0;
+    } catch (err) {
+      const code = err.code || 'UNKNOWN';
+      logger.error(`Attempt ${attempt}/${MAX_ATTEMPTS} failed [${code}]: ${err.message}`);
+      if (code === 'CONFIG') return 1;
+      if (attempt < MAX_ATTEMPTS) await sleep(RETRY_DELAY_MS);
+    }
+  }
+  logger.error(`Gave up after ${MAX_ATTEMPTS} attempts`);
+  return 1;
+}
+
+module.exports = { attemptLogin, runWithRetry };
+
+if (require.main === module) {
+  runWithRetry().then((code) => process.exit(code));
+}

@@ -68,3 +68,69 @@ describe('attemptLogin', () => {
     await expect(attemptLogin()).resolves.toBeUndefined();
   });
 });
+
+describe('runWithRetry', () => {
+  let loginModule;
+  let logger;
+  let attemptSpy;
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.useFakeTimers();
+    jest.doMock('./logger', () => ({ info: jest.fn(), error: jest.fn() }));
+    logger = require('./logger');
+    loginModule = require('./login');
+    attemptSpy = jest.spyOn(loginModule, 'attemptLogin');
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.dontMock('./logger');
+    attemptSpy.mockRestore();
+  });
+
+  async function runAndDrainTimers() {
+    const promise = loginModule.runWithRetry();
+    await jest.runAllTimersAsync();
+    return promise;
+  }
+
+  test('succeeds on first attempt — no retry, exit code 0', async () => {
+    attemptSpy.mockResolvedValue();
+    const code = await runAndDrainTimers();
+    expect(code).toBe(0);
+    expect(attemptSpy).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledWith(expect.stringMatching(/attempt 1\/3/));
+  });
+
+  test('fails twice with NETWORK then succeeds — exit code 0, 3 attempts', async () => {
+    const err = Object.assign(new Error('net down'), { code: 'NETWORK' });
+    attemptSpy
+      .mockRejectedValueOnce(err)
+      .mockRejectedValueOnce(err)
+      .mockResolvedValueOnce();
+    const code = await runAndDrainTimers();
+    expect(code).toBe(0);
+    expect(attemptSpy).toHaveBeenCalledTimes(3);
+    expect(logger.error).toHaveBeenCalledTimes(2);
+    expect(logger.info).toHaveBeenCalledWith(expect.stringMatching(/attempt 3\/3/));
+  });
+
+  test('fails all 3 with AUTH — exit code 1, logs Gave up', async () => {
+    const err = Object.assign(new Error('bad creds'), { code: 'AUTH' });
+    attemptSpy.mockRejectedValue(err);
+    const code = await runAndDrainTimers();
+    expect(code).toBe(1);
+    expect(attemptSpy).toHaveBeenCalledTimes(3);
+    expect(logger.error).toHaveBeenCalledTimes(4); // 3 attempts + Gave up
+    expect(logger.error).toHaveBeenLastCalledWith(expect.stringMatching(/Gave up/));
+  });
+
+  test('CONFIG error skips remaining attempts — exit code 1, 1 attempt', async () => {
+    const err = Object.assign(new Error('no env'), { code: 'CONFIG' });
+    attemptSpy.mockRejectedValue(err);
+    const code = await runAndDrainTimers();
+    expect(code).toBe(1);
+    expect(attemptSpy).toHaveBeenCalledTimes(1);
+  });
+});
